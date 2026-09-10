@@ -44,13 +44,13 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QWidget, QLabel, QPushButton, QMessageBox,
                              QProgressBar, QGraphicsView, QGraphicsScene,
                              QGraphicsPixmapItem, QDoubleSpinBox, QSpinBox,
-                             QGridLayout, QSizePolicy, QFrame, QScrollArea)
+                             QGridLayout, QSizePolicy, QFrame, QScrollArea, QDialog)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QEvent, QRectF, QPointF
 from PyQt6.QtGui import (QImage, QPixmap, QKeyEvent, QPainter, QPen, QColor,
                          QPainterPath, QBrush, QIcon, QPolygonF, QLinearGradient)
 
-VERSION = "1.04"
-VERSION_DATE = "2026/09/10"
+VERSION = "1.05"
+VERSION_DATE = "2026/09/11"
 
 # ---------------------
 #  THEME & STYLING
@@ -160,6 +160,9 @@ QPushButton#ApplyButton:hover {{ background-color: {apply_bg_hover}; }}
 QPushButton#CloseButton {{ background-color: {close_bg}; color: {close_text}; border: 1px solid {close_border}; }}
 QPushButton#CloseButton:hover {{ background-color: {close_bg_hover}; }}
 QPushButton#SmallButton {{ padding: 2px 8px; font-weight: normal; font-size: {fs_small}; }}
+QPushButton#HelpButton {{ padding: 0px; border-radius: 10px; font-size: {fs_small};
+                          background-color: transparent; color: {text_dim}; border: 1px solid {panel_border}; }}
+QPushButton#HelpButton:hover {{ color: {text}; border-color: {accent}; }}
 
 QWidget#StatusBar {{ background-color: {status_bg}; border-top: 1px solid {panel_border}; }}
 QWidget#StatusBar QLabel {{ color: {text_dim}; font-size: {fs_small}; background: transparent; }}
@@ -731,6 +734,78 @@ def make_section(title):
     return w
 
 
+class ThemedDialog(QDialog):
+    """QDialog whose native (Windows) title bar follows the app theme."""
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        style_windows_titlebar(self, THEME["win_bg"], THEME["title_color"])
+        # DWM sometimes ignores the first call on a freshly created HWND
+        QTimer.singleShot(0, lambda: style_windows_titlebar(
+            self, THEME["win_bg"], THEME["title_color"]))
+
+
+def show_help_dialog(parent, panel_hex, text_hex, border_hex, accent_hex):
+    dlg = ThemedDialog(parent)
+    dlg.setWindowTitle("Controls")
+    dlg.setModal(True)
+    dlg.setMinimumWidth(460)
+    dlg.setStyleSheet("QDialog { background-color: %s; }" % panel_hex)
+
+    rows = [
+        ("Mouse wheel over preview", "Zoom in / out"),
+        ("Drag on preview", "Pan"),
+        ("Double-click on preview", "Fit to window"),
+        ("Hold SPACE", "Show the original image; histogram and sliders "
+                        "temporarily revert to their defaults"),
+        ("Double-click a slider", "Reset that slider"),
+        ("Mouse wheel over a slider", "Step the value"),
+        ("Reset", "All sliders to default"),
+    ]
+    row_tpl = (
+        '<tr><td style="padding:5px 14px 5px 0; color:%s; '
+        'border-bottom:1px solid %s; white-space:nowrap;">%s</td>'
+        '<td style="padding:5px 0; color:%s; '
+        'border-bottom:1px solid %s;">%s</td></tr>'
+    )
+    cells = "".join(
+        row_tpl % (text_hex, border_hex, action, text_hex, border_hex, effect)
+        for action, effect in rows
+    )
+    html = (
+        '<div style="font-family: Segoe UI, sans-serif; font-size: 12px;">'
+        '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse; width:100%%;">'
+        '<tr>'
+        '<th style="text-align:left; padding:0 14px 6px 0; color:%s; '
+        'border-bottom:1px solid %s;">Action</th>'
+        '<th style="text-align:left; padding:0 0 6px 0; color:%s; '
+        'border-bottom:1px solid %s;">Effect</th>'
+        '</tr>%s</table></div>'
+    ) % (accent_hex, accent_hex, accent_hex, accent_hex, cells)
+
+    lbl = QLabel(html)
+    lbl.setTextFormat(Qt.TextFormat.RichText)
+    lbl.setWordWrap(True)
+
+    btn_close = QPushButton("Close")
+    btn_close.clicked.connect(dlg.accept)
+    btn_close.setDefault(True)
+
+    lay = QVBoxLayout(dlg)
+    lay.setContentsMargins(18, 16, 18, 14)
+    lay.setSpacing(12)
+    title = QLabel("Controls")
+    title.setStyleSheet("color:%s; font-size:14px; font-weight:600;" % text_hex)
+    lay.addWidget(title)
+    lay.addWidget(lbl)
+    btn_row = QHBoxLayout()
+    btn_row.addStretch()
+    btn_row.addWidget(btn_close)
+    lay.addLayout(btn_row)
+
+    dlg.exec()
+
+
 class CollapsibleSection(QWidget):
     """
     'TITLE ───────── v' header that shows/hides its body.
@@ -865,6 +940,10 @@ def style_windows_titlebar(widget, bg_hex, text_hex):
             col = ctypes.c_int(_colorref(hexcol))
             dwm.DwmSetWindowAttribute(wintypes.HWND(hwnd), ctypes.c_int(attr),
                                       ctypes.byref(col), ctypes.sizeof(col))
+
+        # force non-client area repaint so the new colours show immediately
+        SWP_FLAGS = 0x0001 | 0x0002 | 0x0004 | 0x0020   # NOSIZE|NOMOVE|NOZORDER|FRAMECHANGED
+        ctypes.windll.user32.SetWindowPos(wintypes.HWND(hwnd), None, 0, 0, 0, 0, SWP_FLAGS)
     except Exception as e:
         print(f"Title bar styling skipped: {e}")
 
@@ -965,6 +1044,16 @@ class StarRawGUI(QMainWindow):
         lbl_title.setObjectName("Title")
         hdr.addWidget(lbl_title)
         hdr.addStretch()
+        btn_help = QPushButton("?")
+        btn_help.setObjectName("HelpButton")
+        btn_help.setFixedSize(20, 20)
+        btn_help.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_help.setToolTip("Controls")
+        btn_help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        btn_help.clicked.connect(
+            lambda: show_help_dialog(self, THEME["panel_bg"],
+                                     THEME["text"], THEME["panel_border"], ACCENT))
+        hdr.addWidget(btn_help)
         right.addLayout(hdr)
 
         # histogram
