@@ -43,10 +43,6 @@ Camera Raw **"Basic" panel** emulation for [Siril](https://siril.org) — a Pyth
 | Mouse wheel over a slider | Step the value |
 | **Reset** | All sliders to default |
 
-## Processing notes
+## License
 
-- **Light** sliders are combined into a single 16-bit LUT (fast, order-independent).
-- **Dehaze** removes / adds a low-frequency veil (skyglow); **Clarity** is midtone local contrast that protects highlights and deep shadows.
-- **Temperature / Tint** are per-channel gains normalised so neutral-grey luminance stays constant.
-- **Vibrance** is adaptive (already-saturated pixels and star cores are affected less); **Saturation** is uniform chroma scaling around Rec.709 luminance.
-- Colour sliders are disabled for mono images.
+See `LICENSE`.
