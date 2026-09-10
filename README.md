@@ -2,7 +2,7 @@
 
 ACR **"Basic" panel** emulation for [Siril](https://siril.org) — a Python script with a live-preview PyQt6 GUI.
 
-![StarRaw Basic v1.05](docs/StarRaw_Basic_1_xx.png)
+![StarRaw Basic v1.05](docs/StarRaw_Basic_1.xx.png)
 
 ## Features
 
